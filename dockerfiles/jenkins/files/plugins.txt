@@ -1,0 +1,15 @@
+scm-api
+git-client
+git
+token-macro
+plain-credentials
+github-api
+credentials
+github
+sonar
+artifactory
+jobConfigHistory
+jquery
+delivery-pipeline-plugin
+parameterized-trigger
+ruby

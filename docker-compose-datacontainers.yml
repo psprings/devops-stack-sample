@@ -1,0 +1,4 @@
+jenkins-data:
+  build: dockerfiles/data/jenkins
+# ruby:
+#   build: dockerfiles/ruby

@@ -1,0 +1,20 @@
+<hudson.plugins.sonar.SonarRunnerBuilder plugin="sonar@2.2.1">
+  <project></project>
+  <properties># required metadata
+sonar.projectKey=acs:<%= @projectname %>
+sonar.projectName=<%= @projectname %>
+sonar.projectVersion=1.0
+
+# path to source directories (required)
+sonar.sources=.
+
+# Uncomment this line to analyse a project which is not a java project.
+# The value of the property must be the key of the language.
+#sonar.language=cobol
+
+# Additional parameters
+#sonar.my.property=value</properties>
+  <javaOpts></javaOpts>
+  <jdk>(Inherit From Job)</jdk>
+  <task></task>
+</hudson.plugins.sonar.SonarRunnerBuilder>

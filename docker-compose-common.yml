@@ -1,0 +1,27 @@
+artifactory:
+  image: jfrog-docker-reg2.bintray.io/jfrog/artifactory-oss:latest
+  ports:
+    - "8081:8081"
+sonarqube:
+  image: sonarqube:latest
+  ports:
+    - "9000:9000"
+mysql:
+  image: mysql:latest
+  ports:
+    - "3306:3306"
+jenkins:
+  # image: jenkins:latest
+  ports:
+    - "80:8080"
+  # volumes:
+  #   - /opt/chefdk/embedded/bin:/usr/bin
+cadvisor:
+  image: google/cadvisor:latest
+  volumes:
+    - /:/rootfs:ro
+    - /var/run:/var/run:rw
+    - /sys:/sys:ro
+    - /var/lib/docker/:/var/lib/docker:ro
+  ports:
+    - "88:8080"
