@@ -1,5 +1,6 @@
 require 'docker'
 require 'open3'
+require 'open-uri'
 
 $jenkins_compose_yml = 'docker-compose-jenkins.yml'
 $data_compose_yml = 'docker-compose-datacontainers.yml'
@@ -13,6 +14,26 @@ def get_containers_containing(dock_cons, containing)
     containers << name
   end
   containers
+end
+
+def get_jenkins_host_ports(dock_cons_running, containing)
+  containers = []
+  to_include = containing
+  dock_cons_running.entries.each_with_index do |con, _index|
+    name = con.json.to_hash['Name']
+    next unless name.include?(to_include)
+    host_port = con.json['NetworkSettings']['Ports']['8080/tcp'].first['HostPort']
+    containers << { 'name' => name, 'host_port' => host_port }
+  end
+  containers
+end
+
+def docker_host
+  URI.parse(ENV['DOCKER_HOST']).host
+end
+
+def contruct_jenkins_url(host, port)
+  URI::HTTP.build(:host => host, :port => port.to_i).to_s
 end
 
 def get_jenkins_names(dock_cons)
@@ -130,6 +151,12 @@ if ARGV[0].to_i > 0
   jenkins_up_to_scale(scale, jenkins_containers, jenkins_running, jenkins_link_services) # Create a `docker start` or `docker run` for each
   # Figure out Jenkins ports for 8080 and append to boot2docker (or equivalent)
   # open in default browser
+  running_jenkins = get_jenkins_host_ports(dock_cons_running, 'devopsstack_jenkins_')
+  dock_host = docker_host
+  running_jenkins.each do |jenkins|
+    jenkins_url = contruct_jenkins_url(dock_host, jenkins['host_port'])
+    puts "#{jenkins['name']} available at #{jenkins_url}"
+  end
 else
   exterminate(dock_cons, dock_cons_running) # If number passed in is 0 or if text, then stop/delete
 end
