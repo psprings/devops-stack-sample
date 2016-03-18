@@ -5,6 +5,11 @@ require 'open-uri'
 # Global configs
 $jenkins_compose_yml = 'docker-compose-jenkins.yml'
 $data_compose_yml = 'docker-compose-datacontainers.yml'
+def project_name(str = nil)
+  str ||= File.basename(Dir.pwd)
+  str.gsub!(/[^0-9A-Za-z]/, '').downcase
+end
+$project_name = project_name
 
 # String Colorization
 class String
@@ -65,13 +70,13 @@ def contruct_jenkins_url(host, port)
 end
 
 def get_jenkins_names(dock_cons)
-  containing = 'devopsstack_jenkins_'
+  containing = "#{$project_name}_jenkins_"
   get_containers_containing(dock_cons, containing)
 end
 
 def get_jenkins_images(dock_imgs)
   jenkins_images = []
-  to_include = 'devopsstack_jenkins'
+  to_include = "#{$project_name}_jenkins"
   dock_imgs.entries.each_with_index do |img, _index|
     name = img.json.to_hash['RepoTags'].first.split(':')[0]
     next unless name.include?(to_include)
@@ -88,7 +93,7 @@ def jenkins_container_numbers(jenkins_containers)
   jenkins_containers.map { |name| name.rpartition('_').last.to_i }.sort
 end
 
-def jenkins_scale_down_logic(jenkins_containers, scale, action, prefix = 'devopsstack_jenkins_')
+def jenkins_scale_down_logic(jenkins_containers, scale, action, prefix = "#{$project_name}_jenkins_")
   jenkins_containers = jenkins_containers.split unless jenkins_containers.is_a?(Array)
   jenkins_container_numbers(jenkins_containers)[scale..-1].each do |num_del|
     temp_name = prefix + num_del.to_s
@@ -110,14 +115,14 @@ def jenkins_scale_delete(jenkins_containers, scale)
 end
 
 def jenkins_data_scale_delete(jenkins_containers, scale)
-  jenkins_scale_down_logic(jenkins_containers, scale, 'delete', 'devopsstack_jenkins-data_')
+  jenkins_scale_down_logic(jenkins_containers, scale, 'delete', "#{$project_name}_jenkins-data_")
 end
 
 def jenkins_up_to_scale(scale, jenkins_containers, jenkins_running, jenkins_link_services)
   success = true
   0.upto(scale - 1) do |loop_index|
     number = loop_index + 1
-    jenkins_name = "devopsstack_jenkins_#{number}"
+    jenkins_name = "#{$project_name}_jenkins_#{number}"
     next if jenkins_running.include?("/#{jenkins_name}")
     if jenkins_containers.include?("/#{jenkins_name}")
       cmd = "docker start #{jenkins_name}"
@@ -127,8 +132,8 @@ def jenkins_up_to_scale(scale, jenkins_containers, jenkins_running, jenkins_link
         links << " --link #{service}"
       end
       cmd = "docker run#{links} -d -p 8080"\
-            " --volumes-from devopsstack_jenkins-data_#{number}"\
-            " --name #{jenkins_name} devopsstack_jenkins"
+            " --volumes-from #{$project_name}_jenkins-data_#{number}"\
+            " --name #{jenkins_name} #{$project_name}_jenkins"
     end
     result = system(cmd)
     success &&= result
@@ -159,12 +164,12 @@ def devops_up_the_rest
   system(cmd)
 end
 
-def exterminate(dock_cons, dock_cons_running, del_data = false)
-  containing = 'devopsstack_'
+def exterminate(dock_cons, dock_cons_running, del_data = false, containing = nil)
+  containing ||= "#{$project_name}_"
   all_containers = get_containers_containing(dock_cons, containing)
   running_containers = get_containers_containing(dock_cons_running, containing)
   all_containers.each do |container|
-    next if !del_data && container.include?('devopsstack_jenkins-data_')
+    next if !del_data && container.include?("#{containing}jenkins-data_")
     temp_container = Docker::Container.get(container[1..-1])
     if running_containers.include?(container)
       puts "Stopping #{container[1..-1]}...".yellow
@@ -176,8 +181,8 @@ def exterminate(dock_cons, dock_cons_running, del_data = false)
   puts 'Finished.'.green
 end
 
-def pipeline_stop(running_containers)
-  containing = 'devopsstack_'
+def pipeline_stop(running_containers, containing = nil)
+  containing ||= "#{$project_name}_"
   stop_containers = get_containers_containing(running_containers, containing)
   stop_containers.each do |container|
     temp_container = Docker::Container.get(container[1..-1])
@@ -228,7 +233,7 @@ if __FILE__ == $0
     dock_cons = Docker::Container.all(:all => true)
     dock_cons_running = Docker::Container.all(all: true, filters: { status: ['running'] }.to_json)
     dock_imgs = Docker::Image.all
-    jenkins_link_services = %w( devopsstack_artifactory_1 devopsstack_sonarqube_1 )
+    jenkins_link_services = %W( #{$project_name}_artifactory_1 #{$project_name}_sonarqube_1 )
 
     if ARGV[0].to_i > 0
       # If Jenkins images is empty we need to build a new image
@@ -246,7 +251,7 @@ if __FILE__ == $0
       jenkins_up_to_scale(scale, jenkins_containers, jenkins_running, jenkins_link_services) # Create a `docker start` or `docker run` for each
       # Figure out Jenkins ports for 8080 and append to boot2docker (or equivalent)
       # open in default browser
-      running_jenkins = get_jenkins_host_ports(dock_cons_running, 'devopsstack_jenkins_')
+      running_jenkins = get_jenkins_host_ports(dock_cons_running, "#{$project_name}_jenkins_")
       dock_host = docker_host
       running_jenkins.each do |jenkins|
         jenkins_url = contruct_jenkins_url(dock_host, jenkins['host_port'])
