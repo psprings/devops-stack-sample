@@ -7,7 +7,7 @@ $jenkins_compose_yml = 'docker-compose-jenkins.yml'
 $data_compose_yml = 'docker-compose-datacontainers.yml'
 def project_name(str = nil)
   str ||= File.basename(Dir.pwd)
-  str.gsub!(/[^0-9A-Za-z]/, '').downcase
+  str.gsub(/[^0-9A-Za-z]/, '').downcase
 end
 $project_name = project_name
 
