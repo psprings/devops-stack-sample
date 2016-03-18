@@ -144,7 +144,7 @@ end
 def jenkins_image_build(no_cache = false)
   params = ''
   params = ' --no-cache' if no_cache
-  build_cmd = "docker-compose -f #{$jenkins_compose_yml} build#{params} -d"
+  build_cmd = "docker-compose -f #{$jenkins_compose_yml} build#{params}"
   system(build_cmd)
 end
 
