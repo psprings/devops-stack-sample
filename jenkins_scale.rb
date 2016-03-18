@@ -76,7 +76,7 @@ end
 
 def get_jenkins_images(dock_imgs)
   jenkins_images = []
-  to_include = "#{$project_name}_jenkins"
+  to_include = "#{$project_name}_jenkins_"
   dock_imgs.entries.each_with_index do |img, _index|
     name = img.json.to_hash['RepoTags'].first.split(':')[0]
     next unless name.include?(to_include)
