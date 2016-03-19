@@ -62,11 +62,12 @@ def get_jenkins_host_ports(dock_cons_running, containing)
 end
 
 def docker_host
-  if ENV['DOCKER_HOST']
-    URI.parse(ENV['DOCKER_HOST']).host
-  else
-    'http://127.0.0.1'
-  end
+  host = if ENV['DOCKER_HOST']
+           ENV['DOCKER_HOST']
+         else
+           'http://127.0.0.1'
+         end
+  URI.parse(host).host
 end
 
 def contruct_jenkins_url(host, port)
@@ -210,7 +211,7 @@ def full_generate_pipeline(dock_cons, dock_cons_running, dock_imgs, scale, jenki
   jenkins_image_build if jenkins_images.empty?
   jenkins_containers = get_jenkins_names(dock_cons)
   jenkins_running = get_jenkins_names(dock_cons_running)
-  # Once we know the image exists, we can provision x number of Jenkins containers
+  # Once we know image exists, we can provision x number of Jenkins containers
   # and data containers
   devops_up_the_rest # Spin up artifactory, sonarqube, etc
   jenkins_data_up # provision the jenkins-data containers for "volumes-from"
@@ -247,14 +248,14 @@ if __FILE__ == $0
       jenkins_containers = get_jenkins_names(dock_cons)
       jenkins_running = get_jenkins_names(dock_cons_running)
 
-      # Once we know the image exists, we can provision x number of Jenkins containers
-      # and data containers
+      # Once we know the image exists, we can provision x number of Jenkins
+      # containers and data containers
       devops_up_the_rest # Spin up artifactory, sonarqube, etc
       jenkins_data_up # provision the jenkins-data containers for "volumes-from"
       jenkins_data_scale(scale) # Scale if necessary
       jenkins_up_to_scale(scale, jenkins_containers, jenkins_running, jenkins_link_services) # Create a `docker start` or `docker run` for each
-      # Figure out Jenkins ports for 8080 and append to boot2docker (or equivalent)
-      # open in default browser
+      # Figure out Jenkins ports for 8080 and append to boot2docker
+      # (or equivalent) open in default browser
       running_jenkins = get_jenkins_host_ports(dock_cons_running, "#{$project_name}_jenkins_")
       dock_host = docker_host
       running_jenkins.each do |jenkins|
