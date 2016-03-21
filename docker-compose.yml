@@ -10,22 +10,6 @@ mysql:
   extends:
     file: docker-compose-common.yml
     service: mysql
-jenkins-data:
-  build: dockerfiles/data/jenkins
-# ruby:
-#   build: dockerfiles/ruby
-jenkins:
-  # extends:
-  #   file: docker-compose-common.yml
-  #   service: jenkins
-  build: dockerfiles/jenkins
-  ports:
-    - "80:8080"
-  volumes_from:
-    - devopsstack_jenkins-data_1 # Name will change depending on scale etc
-    # - devopsstack_ruby_1 # Used for running Ruby on Jenkins
-  links:
-    - sonarqube:sonarqube
 cadvisor:
   extends:
     file: docker-compose-common.yml
