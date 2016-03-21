@@ -1,3 +1,29 @@
+## Purpose
+I have many use cases in which I would like to experiment with configurations within my general DevOps (CI/CD) pipeline, or would like to empower others to experiment with/learn the pipeline without the expense of additional infrastructure (or risk of breaking things). This project allows an individual to provision a simplified version of the pipeline and experiment with it locally (or remotely) using Docker containers.
+
+### Pipeline
+#### Primary docker containers
+| Component     | Description                                             |
+| ------------- |---------------------------------------------------------|
+| Jenkins       | CI 'server' used as the hub for automating tasks        |
+| SonarQube     | Used for static source code analysis                    |
+| MySQL         | To be used with data container as DB for SonarQube      |
+| Artifactory   | Artifact storage for compiled code                      |
+
+#### Basic use
+```
+  <SCM>               <CI>        <Artifact Store>
+ -----------      -----------      -------------
+|  GitHub   |<==>|  Jenkins  |<==>| Artifactory |
+ -----------      -----------      ------------- 
+                      ||
+                  ----------- 
+                 | SonarQube |
+                  ----------- 
+               <Static analysis>
+```
+
+---
 ## Requirements
 * Ruby 1.9+
   * Additional Gems (specified below)
@@ -33,7 +59,7 @@
     $ brew cask install virtualbox
     ```
     Then
-    ```
+    ```shell
     $ brew install docker
     $ brew install boot2docker
     ```
@@ -42,13 +68,14 @@
 
 ### Clone
 1. Clone this project and go into the directory
-```shell
-$ git clone https://github.com/psprings/devops-stack-sample.git
-$ cd devops-stack-sample
-```
+
+  ```shell
+  $ git clone https://github.com/psprings/devops-stack-sample.git
+  $ cd devops-stack-sample
+  ```
 
 ### Gem install
-Install gems using **bundle** (shown above) or by manually installing the gems listed below.
+Install gems using **bundle**<sup>[1](#installation)</sup> or by manually installing the gems listed below.
 #### Bundle
 ```shell
 $ bundle install
@@ -62,6 +89,7 @@ Full (to use **thor** commands below)
 ```shell
 $ gem install docker-api OptionParser thor
 ```
+---
 ## Interaction
 ### Via Ruby
 If you don't need fine-grain control or just crave simplicity, the `jenkins_scale.rb`
@@ -84,7 +112,7 @@ $ ruby jenkins_scale.rb 0
 All of the CLI commands have been wrapped in a Ruby file that acts based on a
 single parameter. In order to give more fine grained control over interaction
 with the sample pipeline, a `.thor` file has been created which can be used from
-the command line by typing `thor`.
+the command line by typing `thor`. Make sure thor is installed using either method shown above.<sup>[2](#gem-install)</sup>
 
 #### Basic commands
 To retrieve the command options that are available via the `.thor` file, simply
@@ -128,39 +156,60 @@ Make sure there are n Jenkins up
 The first time this is run, it will take a bit of time (if you are running this in AWS, you may need to adjust the mtu for the adapter you are using). The first step involves pulling down all of the necessary docker base images and building additional images. Once this is accomplished, subsequent runs will be very fast.
 
 1. Generate the pipeline using the `generate_pipeline` command. This will pull down necessary images, build images, then run the containers.
-```shell
-$ thor up:generate_pipeline
-```
-2. With the pipeline now up we can investigate the running containers.
-```shell
-$ thor info:running_containers
-```
-3. We will try to figure out the Jenkins URLs based on environment variables,
-or assumptions.
-```shell
-$ thor info:jenkins_urls
-```
-4. Stop all containers.
-```shell
-$ thor down:stop_pipeline
-```
-5. Bring all containers back up
-```shell
-$ thor up:generate_pipeline
-```
-6. Add additional Jenkins containers
-```shell
-$ thor up:scale_jenkins 2
-```
-7. Get Jenkins URLs
-```shell
-$ thor info:jenkins_urls
-```
-8. Scaled Jenkins back down
-```shell
-$ thor up:scale_jenkins --scale 1 --delete --include
-```
-9. Destroy the pipeline
-```shell
-$ thor destroy:destroy_pipeline
-```
+ 
+ ```shell
+ $ thor up:generate_pipeline
+ ```
+ or
+ ```shell
+ $ ruby jenkins_scale.rb 1
+ ```
+* With the pipeline now up we can investigate the running containers.
+
+ ```shell
+ $ thor info:running_containers
+ ```
+* We will try to figure out the Jenkins URLs based on environment variables,
+or assumptions made by the script (assumes localhost when boot2docker is not present for now).
+
+ ```shell
+ $ thor info:jenkins_urls
+ ```
+* Stop all containers.
+
+ ```shell
+ $ thor down:stop_pipeline
+ ```
+* Bring all containers back up
+
+  ```shell
+  $ thor up:generate_pipeline
+  ```
+* Add additional Jenkins containers
+
+  ```shell
+  $ thor up:scale_jenkins 2
+  ```
+ or
+ ```shell
+ $ ruby jenkins_scale.rb 2
+ ```
+* Get Jenkins URLs
+
+  ```shell
+  $ thor info:jenkins_urls
+  ```
+* Scaled Jenkins back down
+
+  ```shell
+  $ thor up:scale_jenkins --scale 1 --delete --include
+  ```
+* Destroy the pipeline
+
+  ```shell
+  $ thor destroy:destroy_pipeline
+  ```
+  or
+ ```shell
+ $ ruby jenkins_scale.rb 1
+ ```
