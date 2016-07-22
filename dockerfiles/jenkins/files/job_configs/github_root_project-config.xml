@@ -1,0 +1,99 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <se.diabol.jenkins.pipeline.PipelineProperty plugin="delivery-pipeline-plugin@0.9.12">
+      <taskName>Simulate webhook</taskName>
+      <stageName>Trigger</stageName>
+    </se.diabol.jenkins.pipeline.PipelineProperty>
+    <com.sonyericsson.rebuild.RebuildSettings plugin="rebuild@1.25">
+      <autoRebuild>false</autoRebuild>
+      <rebuildDisabled>false</rebuildDisabled>
+    </com.sonyericsson.rebuild.RebuildSettings>
+  </properties>
+  <scm class="hudson.plugins.git.GitSCM" plugin="git@2.5.2">
+    <configVersion>2</configVersion>
+    <userRemoteConfigs>
+      <hudson.plugins.git.UserRemoteConfig>
+        <url>https://github.com/kohsuke/github-api.git</url>
+      </hudson.plugins.git.UserRemoteConfig>
+    </userRemoteConfigs>
+    <branches>
+      <hudson.plugins.git.BranchSpec>
+        <name>*/master</name>
+      </hudson.plugins.git.BranchSpec>
+    </branches>
+    <doGenerateSubmoduleConfigurations>false</doGenerateSubmoduleConfigurations>
+    <submoduleCfg class="list"/>
+    <extensions>
+      <hudson.plugins.git.extensions.impl.CleanBeforeCheckout/>
+    </extensions>
+  </scm>
+  <canRoam>true</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers/>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>#!/bin/bash
+# CAN TEST WITH THE FOLLOWING LINE TO SIMULATE JENKINS VARIABLE:
+# GIT_URL=&quot;https://github.com/psprings/delivery-cluster.git&quot;
+# Strip the .git off the GIT_URL if needed
+gitless=$(echo ${GIT_URL} | sed -e &apos;s/.git$//&apos;)
+org_repo=$(awk -F &quot;.com/&quot; &apos;{print $2}&apos; &lt;&lt;&lt; ${gitless})
+gh_langs=`curl -k https://api.github.com/repos/$org_repo/languages`
+langs=$(echo $gh_langs | jq &apos;keys[]&apos;)
+lang_keys=( $langs )
+PRIMARY_LANG=&quot;&quot;
+# Sort the array by LOC
+sorted_loc=( $(
+    for key in &quot;${lang_keys[@]}&quot;
+    do
+        echo $gh_langs | jq &quot;.$key&quot;
+    done | sort -rV) )
+# Iterate through the keys and find the language matching the highest LOC
+for i in &quot;${lang_keys[@]}&quot;
+do
+   key_lines=$(echo $gh_langs | jq &quot;.$i&quot;)
+   # echo &quot;$key_lines vs ${sorted_loc[0]}&quot;
+   if [[ &quot;$key_lines&quot; = &quot;${sorted_loc[0]}&quot; ]]; then
+   	# Remove quotes and convert first letter to lowercase using sed
+   	PRIMARY_LANG=$(echo &quot;$i&quot; | sed -e &apos;s/^&quot;//&apos;  -e &apos;s/&quot;$//&apos; | sed -e &apos;s/^./\L&amp;\E/&apos;)
+   fi
+done
+echo &quot;Primary language is: ${PRIMARY_LANG}&quot;
+repo_details=`curl -k https://api.github.com/repos/$org_repo`
+PROJECT_NAME=$(echo $repo_details | jq &apos;.name&apos; | sed -e &apos;s/^&quot;//&apos;  -e &apos;s/&quot;$//&apos;)
+echo &quot;language=${PRIMARY_LANG}&quot; &gt; env.properties
+echo &quot;project_name=${PROJECT_NAME}&quot; &gt; env.properties</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <hudson.plugins.parameterizedtrigger.BuildTrigger plugin="parameterized-trigger@2.31">
+      <configs>
+        <hudson.plugins.parameterizedtrigger.BuildTriggerConfig>
+          <configs>
+            <hudson.plugins.parameterizedtrigger.CurrentBuildParameters/>
+            <hudson.plugins.parameterizedtrigger.FileBuildParameters>
+              <propertiesFile>env.properties</propertiesFile>
+              <failTriggerOnMissing>false</failTriggerOnMissing>
+              <useMatrixChild>false</useMatrixChild>
+              <onlyExactRuns>false</onlyExactRuns>
+            </hudson.plugins.parameterizedtrigger.FileBuildParameters>
+            <hudson.plugins.parameterizedtrigger.PredefinedBuildParameters>
+              <properties>GIT_URL=${GIT_URL}</properties>
+            </hudson.plugins.parameterizedtrigger.PredefinedBuildParameters>
+          </configs>
+          <projects>build_quality_sonar, </projects>
+          <condition>SUCCESS</condition>
+          <triggerWithNoParameters>false</triggerWithNoParameters>
+        </hudson.plugins.parameterizedtrigger.BuildTriggerConfig>
+      </configs>
+    </hudson.plugins.parameterizedtrigger.BuildTrigger>
+  </publishers>
+  <buildWrappers/>
+</project>

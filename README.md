@@ -15,11 +15,11 @@ I have many use cases in which I would like to experiment with configurations wi
   <SCM>               <CI>        <Artifact Store>
  -----------      -----------      -------------
 |  GitHub   |<==>|  Jenkins  |<==>| Artifactory |
- -----------      -----------      ------------- 
+ -----------      -----------      -------------
                       ||
-                  ----------- 
+                  -----------
                  | SonarQube |
-                  ----------- 
+                  -----------
                <Static analysis>
 ```
 
@@ -27,6 +27,10 @@ I have many use cases in which I would like to experiment with configurations wi
 ## Requirements
 * Ruby 1.9+
   * Additional Gems (specified below)
+    * _Some gems such as Nokogiri require additional packages to compile_
+      * E.g **Centos**
+        * Install packages ```yum install -y gcc libxslt-devel```
+      * More information: http://www.nokogiri.org/tutorials/installing_nokogiri.html
 * docker
 * docker-compose
 
@@ -65,6 +69,7 @@ I have many use cases in which I would like to experiment with configurations wi
     ```
 * Install docker-compose
   * https://docs.docker.com/compose/install/
+  * Or download directly: https://github.com/docker/compose/releases
 
 ### Clone
 1. Clone this project and go into the directory
@@ -119,9 +124,15 @@ To retrieve the command options that are available via the `.thor` file, simply
 type `thor list` from the command line.
 ```shell
 $ thor list
+build
+-----
+thor build:jenkins_data_image  # Build/rebuild jenkins_data image
+thor build:jenkins_image       # Build/rebuild jenkins_image(s)
+
 destroy
 -------
 thor destroy:destroy_pipeline  # Stop the full DevOps pipeline and delete containers
+thor destroy:untagged_images   # Clean up space by removing all untagged images
 
 down
 ----
@@ -129,13 +140,16 @@ thor down:stop_pipeline  # Stop all running containers, give your computer a bre
 
 info
 ----
+thor info:all_urls            # Get the URLs for each running container
 thor info:containers          # All containers that exist for the DevOps Stack
 thor info:jenkins_urls        # Get the URLs for each running Jenkins container
 thor info:running_containers  # Currently running containers that exist for the DevOps Stack
 
 up
 --
+thor up:generate_jobs            # Generate/fix the base jobs needed for the pipeline
 thor up:generate_pipeline SCALE  # Generate full DevOps pipeline with 1 Jenkins
+thor up:proxy_fix                # Check environment variables for existence of http_proxy/https_proxy and add to boot2docker profile if needed
 thor up:scale_jenkins SCALE      # Make sure there are n Jenkins up
 ```
 Some of these commands may accept parameters, these can be accessed by typing `thor help [name of command]`. An example can be seen below:
@@ -156,7 +170,9 @@ Make sure there are n Jenkins up
 The first time this is run, it will take a bit of time (if you are running this in AWS, you may need to adjust the mtu for the adapter you are using). The first step involves pulling down all of the necessary docker base images and building additional images. Once this is accomplished, subsequent runs will be very fast.
 
 1. Generate the pipeline using the `generate_pipeline` command. This will pull down necessary images, build images, then run the containers.
- 
+
+*Note: recently added the functionality of printing all URLs for running containers that are part of this stack for convenient interaction (can run this separately as `thor info:all_urls`). Then, a few sample Jenkins jobs are created/updated to demonstrate use of all elements of the pipeline (can run this separately as `thor up:generate_jobs`).*
+
  ```shell
  $ thor up:generate_pipeline
  ```
