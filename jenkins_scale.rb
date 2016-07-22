@@ -1,6 +1,7 @@
 require 'docker'
 require 'open3'
 require 'open-uri'
+require 'jenkins_api_client'
 
 # Global configs
 $jenkins_compose_yml = 'docker-compose-jenkins.yml'
@@ -61,6 +62,21 @@ def get_jenkins_host_ports(dock_cons_running, containing)
   containers
 end
 
+def get_all_host_ports(dock_cons_running, containing)
+  containers = []
+  to_include = containing
+  dock_cons_running.entries.each_with_index do |con, _index|
+    name = con.json.to_hash['Name']
+    next unless name.include?(to_include)
+    forwarded_ports = con.json['NetworkSettings']['Ports'].select { |p, _| !con.json['NetworkSettings']['Ports'][p].nil? }
+    forwarded_ports.keys.each do |port|
+      host_port = forwarded_ports[port].first['HostPort']
+      containers << { 'name' => name, 'host_port' => host_port }
+    end
+  end
+  containers
+end
+
 def docker_host
   host = if ENV['DOCKER_HOST']
            ENV['DOCKER_HOST']
@@ -70,7 +86,7 @@ def docker_host
   URI.parse(host).host
 end
 
-def contruct_jenkins_url(host, port)
+def construct_url(host, port)
   URI::HTTP.build(:host => host, :port => port.to_i).to_s
 end
 
@@ -83,11 +99,39 @@ def get_jenkins_images(dock_imgs)
   jenkins_images = []
   to_include = "#{$project_name}_jenkins"
   dock_imgs.entries.each_with_index do |img, _index|
-    name = img.json.to_hash['RepoTags'].first.split(':')[0]
+    name = img.json.to_hash['RepoTags'].first
+    name = name.split(':')[0] unless name.nil?
     next unless name == to_include
     jenkins_images << name
   end
   jenkins_images
+end
+
+def get_non_proj_containers
+  all_containers = Docker::Container.all(:all => true)
+  all_containers.select { |container| container.info['Names'][0] !~ %r{/"#{$project_name}"_} }
+end
+
+def delete_containers(containers)
+  containers.each do |c|
+    c.stop if c.info['State'] == 'running'
+    c.delete(:force => true)
+  end
+end
+
+def delete_non_proj_containers
+  delete_containers(get_non_proj_containers)
+end
+
+def delete_all_containers
+  delete_containers(Docker::Container.all(:all => true))
+end
+
+def remove_untagged_images(dock_imgs)
+  dock_imgs.entries.each do |img|
+    name = img.json.to_hash['RepoTags'].first
+    img.remove(:force => true) if name.nil?
+  end
 end
 
 def jenkins_current_scale(jenkins_containers)
@@ -140,7 +184,8 @@ def jenkins_up_to_scale(scale, jenkins_containers, jenkins_running, jenkins_link
             " --volumes-from #{$project_name}_jenkins-data_#{number}"\
             " --name #{jenkins_name} #{$project_name}_jenkins"
     end
-    result = system(cmd)
+    # result = system(cmd)
+    result = execute_it(cmd)
     success &&= result
   end
   success
@@ -150,6 +195,15 @@ def jenkins_image_build(no_cache = false)
   params = ''
   params = ' --no-cache' if no_cache
   build_cmd = "docker-compose -f #{$jenkins_compose_yml} build#{params}"
+  system(build_cmd)
+end
+
+def jenkins_data_image_build(no_cache = false)
+  params = ''
+  params = ' --no-cache' if no_cache
+  params += " --build-arg host_in=#{URI::HTTP.build(:host => docker_host).to_s}"
+  build_cmd = "docker-compose -f #{$data_compose_yml} build#{params}"
+  build_cmd = "docker build -t #{$project_name}_jenkins-data#{params} dockerfiles/data/jenkins"
   system(build_cmd)
 end
 
@@ -231,6 +285,139 @@ def jenkins_create(dock_cons, dock_cons_running, dock_imgs, scale, jenkins_link_
   jenkins_up_to_scale(scale, jenkins_containers, jenkins_running, jenkins_link_services) # Create a `docker start` or `docker run` for each
 end
 
+def init_jenkins_client(args)
+  @jenkins_client = JenkinsApi::Client.new(:server_ip => args[:server_ip], :server_port => args[:server_port])
+end
+
+def jenkins_wait_for_ready
+  @jenkins_client.system.wait_for_ready
+end
+
+def jobs_create_or_fix(job_name, xml = nil)
+  xml ||= File.open(File.expand_path("dockerfiles/jenkins/files/job_configs/#{job_name}-config.xml", File.dirname(__FILE__))).read
+  @jenkins_client.job.create_or_update(job_name, xml)
+end
+
+def includes_view(view_name)
+  @jenkins_client.view.list.include?(view_name)
+end
+
+def config_delivery_pipeline(view_name)
+  plugin_name = 'delivery-pipeline-plugin'
+  unless @jenkins_client.plugin.list_installed.include?(plugin_name)
+    @jenkins_client.plugin.install(plugin_name)
+    @jenkins_client.system.restart(true) if @jenkins_client.plugin.restart_required?
+    jenkins_wait_for_ready
+  end
+  initial_post_params = { 'name' => view_name, 'mode' => 'se.diabol.jenkins.pipeline.DeliveryPipelineView', "json" => { 'name' => view_name, 'mode' => 'se.diabol.jenkins.pipeline.DeliveryPipelineView', "componentSpecs"=>[{"name" => "Default", "firstJob"=>"github_root_project", "lastJob"=>""}]}.to_json}
+  @jenkins_client.api_post_request('/createView', initial_post_params) unless includes_view(view_name)
+  @jenkins_client.api_post_request("/view/#{view_name}/configSubmit", initial_post_params)
+end
+
+
+
+module SonarQube
+  class Client
+    attr_reader :host, :port, :api_endpoint, :api_token
+    def initialize(options)
+      options[:port] ||= 9000
+      @host = options[:host]
+      @port = options[:port]
+      @api_endpoint = URI::HTTP.build(:host => options[:host], :port => options[:port], :path => '/api')
+      @username = options[:username]
+      @api_token = options[:api_token]
+    end
+
+    module Connection
+      def http_request_base(input = nil)
+        if input.is_a?(String)
+          uri = URI.parse(input)
+        elsif input.is_a?(Hash)
+          uri = URI::HTTP.build(input)
+        else
+          uri = @api_endpoint
+        end
+        http = Net::HTTP.new(uri.host, uri.port)
+        http.verify_mode = OpenSSL::SSL::VERIFY_NONE if uri.scheme == 'https'
+        http
+      end
+
+      def authorize_request(request)
+        if @username && @password
+          request.basic_auth(@username, @password)
+        elsif @api_token
+          request.basic_auth(@api_token, nil)
+        end
+        request
+      end
+    end
+
+    module Languages
+      def supported_languages
+        http = http_request_base
+        request = Net::HTTP::Get.new('/api/languages/list')
+        response = http.request(request)
+        response.body
+      end
+    end
+
+    module System
+      def system_status
+        http = http_request_base
+        request = Net::HTTP::Get.new('/api/system/status')
+        response = http.request(request)
+        response.body
+      end
+
+      def system_restart
+        http = http_request_base
+        request = Net::HTTP::Post.new('/api/system/restart')
+        request = authorize_request(request)
+        response = http.request(request)
+        response.body
+      end
+    end
+
+    module Plugins
+      def installed_plugins(input = nil)
+        http = http_request_base(input)
+        request = Net::HTTP::Get.new('/api/plugins/installed')
+        response = http.request(request)
+        response.body
+      end
+
+      def available_plugins
+        http = http_request_base
+        request = Net::HTTP::Get.new('/api/plugins/available')
+        response = http.request(request)
+        response.body
+      end
+
+      def install_plugin(plugin_name)
+        http = http_request_base
+        request = Net::HTTP::Post.new("/api/plugins/install?key=#{plugin_name}")
+        request = authorize_request(request)
+        response = http.request(request)
+        response.body
+      end
+
+      def uninstall_plugin(plugin_name)
+        # requires restart to completely uninstall
+        http = http_request_base
+        request = Net::HTTP::Post.new("/api/plugins/uninstall?key=#{plugin_name}")
+        request = authorize_request(request)
+        response = http.request(request)
+        response.body
+      end
+    end
+
+    include SonarQube::Client::Connection
+    include SonarQube::Client::Plugins
+    include SonarQube::Client::Languages
+    include SonarQube::Client::System
+  end
+end
+# s = SonarQube::Client.new(:host => '192.168.59.103')
 if __FILE__ == $0
   unless ARGV[0].nil?
     scale = ARGV[0].to_i
